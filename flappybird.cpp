@@ -2,11 +2,34 @@
 #include <vector>
 #include <cstdlib>
 #include <ctime>
-#include <conio.h> // for _kbhit() and getch() on Windows
+#include <unistd.h>
+#include <termios.h>
 using namespace std;
 
 const int HEIGHT = 10;
 const int WIDTH = 30;
+
+// Non-blocking keyboard input
+int kbhit() {
+    termios oldt, newt;
+    int ch;
+    int oldf;
+
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    int bytesWaiting;
+    ioctl(STDIN_FILENO, FIONREAD, &bytesWaiting);
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return bytesWaiting;
+}
+
+char getchNow() {
+    char c;
+    read(STDIN_FILENO, &c, 1);
+    return c;
+}
 
 struct Pipe {
     int x;
@@ -24,41 +47,38 @@ int main() {
     pipes.push_back({WIDTH - 1, rand() % (HEIGHT - 3) + 1});
 
     while (!gameOver) {
-        
+
         // Input
-        if (_kbhit()) {
-            char c = getch();
-            if (c == 'w' || c == 'W') birdY--; // flap up
-        } 
-        else {
-            birdY++; // gravity
+        if (kbhit()) {
+            char c = getchNow();
+            if (c == 'w' || c == 'W') birdY--;
+        } else {
+            birdY++;
         }
 
-        // Add new pipe
+        // Add pipes
         if (pipes.back().x == WIDTH - 15) {
             pipes.push_back({WIDTH - 1, rand() % (HEIGHT - 3) + 1});
         }
 
-        // Move pipes left
+        // Move pipes
         for (auto &p : pipes) {
             p.x--;
         }
 
-        // Clear screen
-        system("cls");
+        // Clear screen for Linux
+        cout << "\033[2J\033[1;1H";
 
         // Draw game
         for (int y = 0; y < HEIGHT; y++) {
             for (int x = 0; x < WIDTH; x++) {
                 bool drawn = false;
 
-                // Bird
                 if (x == 5 && y == birdY) {
                     cout << ">";
                     drawn = true;
                 }
 
-                // Pipes
                 for (auto &p : pipes) {
                     if (x == p.x && !(y >= p.gapY && y <= p.gapY + 2)) {
                         cout << "|";
@@ -71,9 +91,10 @@ int main() {
             cout << "\n";
         }
 
-        // Collisions
+        // Collision: top/bottom
         if (birdY < 0 || birdY >= HEIGHT) gameOver = true;
 
+        // Collision pipes
         for (auto &p : pipes) {
             if (p.x == 5 && !(birdY >= p.gapY && birdY <= p.gapY + 2)) {
                 gameOver = true;
@@ -87,8 +108,7 @@ int main() {
 
         cout << "Score: " << score << endl;
 
-        // Game speed
-        _sleep(120);
+        usleep(120000); // 120ms
     }
 
     cout << "GAME OVER!" << endl;
